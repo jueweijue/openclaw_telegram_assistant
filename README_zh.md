@@ -70,6 +70,16 @@ bash run.sh
 
 ## 🚀 作为 systemd 服务运行
 
+先编辑 `openclaw-telegram-assistant.service`，将 `/path/to/project` 替换为你的实际项目目录：
+
+```ini
+WorkingDirectory=/path/to/project/openclaw_telegram_assistant
+EnvironmentFile=/path/to/project/openclaw_telegram_assistant/.env
+ExecStart=/usr/bin/python3 /path/to/project/openclaw_telegram_assistant/bot.py
+```
+
+然后执行：
+
 ```bash
 # 复制服务文件
 sudo cp openclaw-telegram-assistant.service /etc/systemd/system/

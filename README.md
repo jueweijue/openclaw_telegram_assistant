@@ -70,6 +70,16 @@ Edit the `.env` file:
 
 ## 🚀 Run as a systemd Service
 
+Edit `openclaw-telegram-assistant.service` and replace `/path/to/project` with your actual project directory:
+
+```ini
+WorkingDirectory=/path/to/project/openclaw_telegram_assistant
+EnvironmentFile=/path/to/project/openclaw_telegram_assistant/.env
+ExecStart=/usr/bin/python3 /path/to/project/openclaw_telegram_assistant/bot.py
+```
+
+Then:
+
 ```bash
 # Copy the service file
 sudo cp openclaw-telegram-assistant.service /etc/systemd/system/

@@ -4,9 +4,10 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=/root/project/openclaw_telegram_assistant
-EnvironmentFile=/root/project/openclaw_telegram_assistant/.env
-ExecStart=/usr/bin/python3 /root/project/openclaw_telegram_assistant/bot.py
+# TODO: Replace /path/to/project with your actual project directory
+WorkingDirectory=/path/to/project/openclaw_telegram_assistant
+EnvironmentFile=/path/to/project/openclaw_telegram_assistant/.env
+ExecStart=/usr/bin/python3 /path/to/project/openclaw_telegram_assistant/bot.py
 Restart=on-failure
 RestartSec=5
 
