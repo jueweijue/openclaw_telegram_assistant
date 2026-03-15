@@ -1,129 +1,129 @@
 # OpenClaw Telegram Assistant 🐰
 
-一个轻量、安全的 Telegram Bot，让你在 Telegram 里直接执行服务器 Shell 命令，并内置 OpenClaw Gateway 管理快捷操作。
+> 🌐 English | **[中文](./README_zh.md)**
 
-## ✨ 功能特性
+---
 
-### 🖥️ Shell 命令执行
-- 在 Telegram 中发送消息即执行 Shell 命令，结果以代码块格式返回
-- **cd 持久化** — 切换目录后多次命令共享同一工作目录，不用反复 `cd`
-- **超时保护** — 命令超时自动终止（默认 30s，可配置），防止进程卡死
-- **进程组清理** — 超时后 SIGTERM → SIGKILL 逐步清理，不残留僵尸进程
+A lightweight, secure Telegram Bot that lets you execute server shell commands directly in Telegram, with built-in OpenClaw Gateway management shortcuts.
 
-### 🛡️ 安全机制
-- **用户白名单** — 仅允许指定 user_id 操作，未配置时拒绝所有访问
-- **交互式命令拦截** — 自动识别并拦截需要终端交互的命令（`vim`、`htop`、`ssh`、`tail -f` 等），并给出替代建议
-- **REPL 命令增强检测** — `python3`、`node` 等必须带 `-c`/脚本文件参数才能执行，防止进入交互模式
-- **路径注入防护** — 使用 `shlex.quote` 处理工作目录路径
+## ✨ Features
 
-### ⚡ 智能辅助
-- **命令自动修正** — `top -b` → `top -bn1`，自动补全 batch 模式参数
-- **交互命令替代提示** — `vim` → 用 `cat` 读取 / `sed` 编辑，`less` → `cat` 等
-- **OpenClaw 快捷菜单** — Telegram 输入框左侧内置 `/openclaw_start`、`/openclaw_stop`、`/openclaw_restart` 快捷按钮
+### 🖥️ Shell Command Execution
+- Execute shell commands by sending messages in Telegram, results returned in code block format
+- **Persistent `cd`** — directory changes persist across commands, no need to repeat `cd`
+- **Timeout protection** — commands automatically terminated after timeout (default 30s, configurable), preventing hung processes
+- **Process group cleanup** — graceful SIGTERM → SIGKILL escalation after timeout, no zombie processes
 
-### 🔧 OpenClaw 集成
-- 内置 `/openclaw_start`、`/openclaw_stop`、`/openclaw_restart` 命令
-- 一键管理 OpenClaw Gateway，无需 SSH 登录
+### 🛡️ Security
+- **User whitelist** — only specified `user_id` can operate; all access denied when unconfigured
+- **Interactive command interception** — automatically detects and blocks commands requiring a terminal (`vim`, `htop`, `ssh`, `tail -f`, etc.) with alternative suggestions
+- **REPL command detection** — `python3`, `node`, etc. must include `-c` or a script file argument to prevent entering interactive mode
+- **Path injection protection** — uses `shlex.quote` to sanitize working directory paths
 
-## 📦 安装
+### ⚡ Smart Assistance
+- **Auto-correction** — `top -b` → `top -bn1`, automatically补全 batch mode flags
+- **Interactive command alternatives** — `vim` → use `cat` to read / `sed` to edit, `less` → `cat`, etc.
+- **OpenClaw shortcut menu** — built-in `/openclaw_start`, `/openclaw_stop`, `/openclaw_restart` commands in the Telegram input menu
+
+### 🔧 OpenClaw Integration
+- Built-in `/openclaw_start`, `/openclaw_stop`, `/openclaw_restart` commands
+- One-click OpenClaw Gateway management, no SSH needed
+
+## 📦 Installation
 
 ```bash
-# 1. 克隆仓库
-git clone https://github.com/zaineye/openclaw_telegram_assistant.git
+# 1. Clone the repository
+git clone https://github.com/jueweijue/openclaw_telegram_assistant.git
 cd openclaw_telegram_assistant
 
-# 2. 安装依赖（仅需 requests）
+# 2. Install dependencies (only requests needed)
 pip3 install -r requirements.txt
 
-# 3. 配置环境变量
+# 3. Configure environment variables
 cp .env.example .env
-# 编辑 .env，填入你的 BOT_TOKEN 和 ALLOWED_USER
+# Edit .env, fill in your BOT_TOKEN and ALLOWED_USER
 
-# 4. 启动
+# 4. Start
 bash run.sh
 ```
 
-## 🔑 配置
+## 🔧 Configuration
 
-编辑 `.env` 文件：
+Edit the `.env` file:
 
-| 变量 | 必填 | 说明 | 默认值 |
-|------|------|------|--------|
-| `BOT_TOKEN` | ✅ | Telegram Bot Token（从 @BotFather 获取） | — |
-| `ALLOWED_USER` | ⚠️ | 允许使用 Bot 的 Telegram User ID（留 0 = 拒绝所有人） | `0` |
-| `CMD_TIMEOUT` | ❌ | 命令超时秒数 | `30` |
+| Variable | Required | Description | Default |
+|----------|----------|-------------|---------|
+| `BOT_TOKEN` | ✅ | Telegram Bot Token (from @BotFather) | — |
+| `ALLOWED_USER` | ⚠️ | Telegram User ID allowed to use the Bot (0 = deny all) | `0` |
+| `CMD_TIMEOUT` | ❌ | Command timeout in seconds | `30` |
 
-### 获取 Bot Token
+### Getting a Bot Token
 
-1. 在 Telegram 找 [@BotFather](https://t.me/BotFather)
-2. 发送 `/newbot`，按提示创建
-3. 复制 token 填入 `.env`
+1. Find [@BotFather](https://t.me/BotFather) on Telegram
+2. Send `/newbot` and follow the prompts
+3. Copy the token and paste it into `.env`
 
-### 获取 User ID
+### Getting Your User ID
 
-1. 在 Telegram 找 [@userinfobot](https://t.me/userinfobot)
-2. 发送任意消息，它会返回你的 user ID
+1. Find [@userinfobot](https://t.me/userinfobot) on Telegram
+2. Send any message and it will return your user ID
 
-## 🚀 作为 systemd 服务运行
+## 🚀 Run as a systemd Service
 
 ```bash
-# 复制服务文件
+# Copy the service file
 sudo cp openclaw-telegram-assistant.service /etc/systemd/system/
 
-# 重载 & 启动
+# Reload & start
 sudo systemctl daemon-reload
 sudo systemctl enable --now openclaw-telegram-assistant
 
-# 查看状态
+# Check status
 sudo systemctl status openclaw-telegram-assistant
 
-# 查看日志
+# View logs
 sudo journalctl -u openclaw-telegram-assistant -f
 ```
 
-## 📖 使用示例
+## 📖 Usage Examples
 
-| 发送 | 说明 |
-|------|------|
-| `ls -la` | 列出当前目录 |
-| `cd /var/log` | 切换到 /var/log（持久化） |
-| `pwd` | 返回 `/var/log` |
-| `top -bn1 \| head -10` | 查看 CPU 占用前 10 的进程 |
-| `/cwd` | 查看当前工作目录 |
-| `/help` | 查看帮助 |
-| `/openclaw_restart` | 重启 OpenClaw Gateway |
+| Send | Description |
+|------|-------------|
+| `ls -la` | List current directory |
+| `cd /var/log` | Change to /var/log (persistent) |
+| `pwd` | Returns `/var/log` |
+| `top -bn1 \| head -10` | Show top 10 CPU-consuming processes |
+| `/cwd` | View current working directory |
+| `/help` | View help |
+| `/openclaw_restart` | Restart OpenClaw Gateway |
 
-### 被拦截的命令示例
+### Intercepted Command Examples
 
-| 发送 | 结果 |
-|------|------|
-| `vim test.txt` | ⚠️ 拦截，提示用 `cat` / `sed` |
-| `htop` | ⚠️ 拦截，提示用 `top -bn1 \| head -20` |
-| `tail -f /var/log/syslog` | ⚠️ 拦截，提示用 `tail -n 50` |
-| `python3` | ⚠️ 拦截，提示传入 `-c` 或脚本文件 |
+| Send | Result |
+|------|--------|
+| `vim test.txt` | ⚠️ Intercepted, suggests `cat` / `sed` |
+| `htop` | ⚠️ Intercepted, suggests `top -bn1 \| head -20` |
+| `tail -f /var/log/syslog` | ⚠️ Intercepted, suggests `tail -n 50` |
+| `python3` | ⚠️ Intercepted, suggests passing `-c` or a script file |
 
-## 🧪 测试
-
-详见 [TEST-CASES.md](./TEST-CASES.md)，包含 37 个覆盖基础命令、cd 持久化、交互拦截、超时保护等场景的测试用例。
-
-## 📂 项目结构
+## 📂 Project Structure
 
 ```
-├── bot.py                              # 核心逻辑
-├── run.sh                              # 启动脚本
-├── openclaw-telegram-assistant.service  # systemd 服务文件
-├── requirements.txt                    # Python 依赖
-├── .env.example                        # 环境变量模板
-├── .gitignore                          # Git 忽略规则
-├── TEST-CASES.md                       # 测试用例
-└── README.md                           # 本文件
+├── bot.py                              # Core logic
+├── run.sh                              # Startup script
+├── openclaw-telegram-assistant.service  # systemd service file
+├── requirements.txt                    # Python dependencies
+├── .env.example                        # Environment variable template
+├── .gitignore                          # Git ignore rules
+├── README.md                           # This file (English)
+└── README_zh.md                        # Chinese README
 ```
 
-## ⚠️ 安全提醒
+## ⚠️ Security Notes
 
-- `.env` 文件包含 Bot Token，**绝对不要提交到版本库**
-- 建议在服务器防火墙限制 SSH 访问，Bot 本身不暴露端口
-- `ALLOWED_USER` 务必设置为你的 User ID，不要留 0 用于生产环境
+- The `.env` file contains your Bot Token — **never commit it to version control**
+- It is recommended to restrict SSH access via server firewall; the Bot itself does not expose any ports
+- Always set `ALLOWED_USER` to your own User ID; do not leave it as 0 in production
 
 ## 📄 License
 

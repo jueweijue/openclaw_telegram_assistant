@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Telegram Shell Bot — 收到消息 → 执行命令 → 返回结果，cd 持久化"""
+"""Telegram Shell Bot — receives message → executes command → returns result, with persistent cd"""
 
 import os
 import shlex
@@ -8,43 +8,43 @@ import subprocess
 import time
 import requests
 
-# ── 配置 ────────────────────────────────────────────────────────────────────
+# ── Configuration ────────────────────────────────────────────────────────────
 TOKEN        = os.environ["BOT_TOKEN"]
-# 安全底线：如果未配置，强制为 0，后续逻辑将拒绝所有人访问
+# Safety底线: if not configured, force to 0; all access will be denied
 ALLOWED_USER = int(os.environ.get("ALLOWED_USER", "0"))
 TIMEOUT      = int(os.environ.get("CMD_TIMEOUT", "30"))
 API          = f"https://api.telegram.org/bot{TOKEN}"
 CWD_FILE     = "/tmp/tg-shell-bot.cwd"
-# 默认目录改为当前运行用户的家目录
+# Default directory: current user's home
 DEFAULT_CWD  = os.path.expanduser("~")
 
-# ── 交互式命令提示表 ─────────────────────────────────────────────────────────
+# ── Interactive command hint table ────────────────────────────────────────────
 INTERACTIVE_HINTS: dict[str, str] = {
     "htop":   "htop → top -bn1 | head -20",
-    "less":   "less → cat <文件>",
-    "more":   "more → cat <文件>",
-    "vim":    "vim → 读取用 cat，编辑用 sed / echo '>'",
-    "vi":     "vi → 读取用 cat，编辑用 sed / echo '>'",
-    "nano":   "nano → 读取用 cat，编辑用 sed / echo '>'",
+    "less":   "less → cat <file>",
+    "more":   "more → cat <file>",
+    "vim":    "vim → use cat to read, sed / echo '>' to edit",
+    "vi":     "vi → use cat to read, sed / echo '>' to edit",
+    "nano":   "nano → use cat to read, sed / echo '>' to edit",
     "watch":  "watch → while true; do <cmd>; sleep 2; done",
-    "tmux":   "tmux 是终端多路复用器，无法在此使用",
-    "screen": "screen 是终端多路复用器，无法在此使用",
-    "ssh":    "ssh 需要交互终端，无法在此使用",
-    "su":     "su 需要交互终端，用 sudo <命令> 代替",
-    "irb":    "irb → ruby -e \"代码\"",
+    "tmux":   "tmux is a terminal multiplexer, not available here",
+    "screen": "screen is a terminal multiplexer, not available here",
+    "ssh":    "ssh requires an interactive terminal, not available here",
+    "su":     "su requires an interactive terminal, use sudo <command> instead",
+    "irb":    "irb → ruby -e \"code\"",
 }
 
-# 需要额外 flag 才能非交互运行的命令
+# Commands that need extra flags to run non-interactively
 BATCH_FLAGS: dict[str, str] = {
     "top": "-bn1",
     "man": "-P cat",
 }
 
-# 无参数时会进入交互 REPL 的命令
+# Commands that enter interactive REPL without arguments
 REPL_CMDS = {"python", "python3", "node", "mysql", "psql", "ruby", "lua"}
 
 
-# ── 工作目录持久化 ────────────────────────────────────────────────────────────
+# ── Working directory persistence ────────────────────────────────────────────
 def _init_cwd() -> None:
     if not os.path.exists(CWD_FILE):
         _write_cwd(DEFAULT_CWD)
@@ -60,20 +60,20 @@ def _write_cwd(path: str) -> None:
         f.write(path)
 
 
-# ── 交互式命令检测 ────────────────────────────────────────────────────────────
+# ── Interactive command detection ────────────────────────────────────────────
 def check_interactive(cmd: str) -> str | None:
-    """若命令需要交互终端，返回友好提示；否则返回 None。"""
+    """Returns a friendly hint if the command requires an interactive terminal; otherwise None."""
     parts = cmd.split()
     if not parts:
         return None
 
     cmd_name = os.path.basename(parts[0])
 
-    # tail -f 检测
+    # tail -f detection
     if cmd_name == "tail" and any(f in parts for f in ("-f", "--follow", "-F")):
-        return "tail -f → tail -n 50 <文件>"
+        return "tail -f → tail -n 50 <file>"
 
-    # 管道末尾的分页/编辑命令检测
+    # Detect pager/editor commands at the end of a pipe
     for segment in cmd.split("|")[1:]:
         pipe_cmd = segment.strip().split()
         if pipe_cmd:
@@ -81,43 +81,43 @@ def check_interactive(cmd: str) -> str | None:
             if pipe_name in INTERACTIVE_HINTS:
                 return INTERACTIVE_HINTS[pipe_name]
 
-    # 永远交互的命令
+    # Always-interactive commands
     if cmd_name in INTERACTIVE_HINTS:
         return INTERACTIVE_HINTS[cmd_name]
 
-    # 需要 batch flag 的命令检测
+    # Commands requiring batch flag
     if cmd_name in BATCH_FLAGS:
         required_flag = BATCH_FLAGS[cmd_name]
-        
-        # 对于 top，严格匹配形如 -b, -bn1 等参数
+
+        # For top, strictly match flags like -b, -bn1
         if cmd_name == "top":
             has_batch = any(p.startswith("-") and "b" in p for p in parts[1:])
             if not has_batch:
-                return f"top（交互模式）→ 建议使用 top {required_flag}"
-                
-        # 对于 man，如果没有任何 - 开头的参数，则提示拦截
+                return f"top (interactive mode) → consider using top {required_flag}"
+
+        # For man, intercept if no - flags provided
         elif cmd_name == "man":
             has_flag = any(p.startswith("-") for p in parts[1:])
             if not has_flag:
-                return f"man（交互模式）→ 建议使用 man {required_flag} <命令>"
+                return f"man (interactive mode) → consider using man {required_flag} <command>"
 
-    # REPL 命令增强检测：必须带有执行标志或脚本文件参数，否则拦截
+    # REPL command detection: must have execution flag or script file argument
     if cmd_name in REPL_CMDS:
         safe_flags = {"-c", "-e", "--version", "-V", "-h", "--help"}
         has_safe_flag = any(f in parts for f in safe_flags)
         has_script_file = any(not p.startswith("-") for p in parts[1:])
         if not (has_safe_flag or has_script_file):
-            return f"{cmd_name} 交互模式不可用，请传入脚本文件或 -e/-c 参数"
+            return f"{cmd_name} interactive mode not available, please provide a script file or -e/-c flag"
 
     return None
 
 
-# ── 命令执行 ─────────────────────────────────────────────────────────────────
+# ── Command execution ────────────────────────────────────────────────────────
 def execute(cmd: str) -> str:
-    """在持久化 cwd 下执行 shell 命令，三重防卡死 + 进程组清理。"""
+    """Execute a shell command under persistent cwd with triple hang-protection and process group cleanup."""
     cwd = _read_cwd()
     try:
-        # shlex.quote 防止路径注入破坏 bash 语法
+        # shlex.quote prevents path injection from breaking bash syntax
         wrapped = f"cd {shlex.quote(cwd)} && timeout {TIMEOUT} {cmd}"
         proc = subprocess.Popen(
             wrapped,
@@ -139,33 +139,33 @@ def execute(cmd: str) -> str:
             except (subprocess.TimeoutExpired, ProcessLookupError):
                 os.killpg(pgid, signal.SIGKILL)
                 proc.wait()
-            return f"❌ 命令超时，已终止（>{TIMEOUT}s）"
+            return f"❌ Command timed out, terminated (>{TIMEOUT}s)"
 
-        output = stdout or stderr or "(无输出)"
+        output = stdout or stderr or "(no output)"
         if proc.returncode == 124:
-            output += "\n❌ 命令超时，已被终止"
+            output += "\n❌ Command timed out, terminated"
         elif proc.returncode != 0:
             output += f"\n[exit code: {proc.returncode}]"
         return output
 
     except Exception as e:
-        return f"❌ 错误: {e}"
+        return f"❌ Error: {e}"
 
 
-# ── cd 处理 ──────────────────────────────────────────────────────────────────
+# ── cd handling ──────────────────────────────────────────────────────────────
 def handle_cd(text: str) -> tuple[bool, str]:
     """
-    处理纯 cd 命令。若包含 && 等复合逻辑，交由 execute 跑完，不拦截。
-    返回 (handled, message)
+    Handle pure cd commands. If compound logic (&&, etc.) is present, pass to execute.
+    Returns (handled, message)
     """
     if any(op in text for op in ("&&", ";", "|", "||")):
-        return False, ""  # 是复合命令，让 shell 自己去跑（但不持久化）
+        return False, ""  # Compound command, let shell handle it
 
     parts = text.split()
     target = parts[1] if len(parts) > 1 else "~"
 
     if target == "-":
-        return True, "⚠️ cd - 不支持（无 OLDPWD）"
+        return True, "⚠️ cd - not supported (no OLDPWD)"
 
     target = os.path.expanduser(target)
     if not os.path.isabs(target):
@@ -176,31 +176,31 @@ def handle_cd(text: str) -> tuple[bool, str]:
         _write_cwd(target)
         return True, f"📂 {target}"
 
-    return True, f"❌ 目录不存在或无权限: {parts[1] if len(parts) > 1 else '~'}"
+    return True, f"❌ Directory does not exist or no permission: {parts[1] if len(parts) > 1 else '~'}"
 
 
-# ── Telegram 消息发送与快捷菜单 ───────────────────────────────────────────────
+# ── Telegram message sending and shortcut menu ───────────────────────────────
 def _set_telegram_menu() -> None:
-    """自动向 Telegram 注册输入框左侧的快捷命令菜单"""
+    """Register shortcut commands in the Telegram input menu"""
     commands = [
-        {"command": "openclaw_start", "description": "▶️ 启动 OpenClaw"},
-        {"command": "openclaw_stop", "description": "⏹ 停止 OpenClaw"},
-        {"command": "openclaw_restart", "description": "🔄 重启 OpenClaw"},
-        {"command": "cwd", "description": "📂 查看当前目录"},
-        {"command": "help", "description": "📖 查看帮助"},
+        {"command": "openclaw_start", "description": "▶️ Start OpenClaw"},
+        {"command": "openclaw_stop", "description": "⏹ Stop OpenClaw"},
+        {"command": "openclaw_restart", "description": "🔄 Restart OpenClaw"},
+        {"command": "cwd", "description": "📂 View current directory"},
+        {"command": "help", "description": "📖 View help"},
     ]
     try:
         resp = requests.post(f"{API}/setMyCommands", json={"commands": commands}, timeout=10)
         resp.raise_for_status()
-        print("✅ Telegram 快捷菜单注册成功！")
+        print("✅ Telegram shortcut menu registered!")
     except Exception as e:
-        print(f"⚠️ Telegram 菜单注册失败: {e}")
+        print(f"⚠️ Telegram menu registration failed: {e}")
 
 
 def send(chat_id: int, text: str, reply_to: int | None = None, code: bool = False) -> None:
-    """发送消息；code=True 时用 MarkdownV2 代码块格式化。"""
+    """Send a message; when code=True, format with MarkdownV2 code blocks."""
     if code:
-        # 正确转义反斜杠和反引号，保留原始输出内容，防止 API 报错 400
+        # Properly escape backslashes and backticks, preserve original output, prevent 400 errors
         safe = text[:4000].replace('\\', '\\\\').replace('`', '\\`')
         payload: dict = {
             "chat_id": chat_id,
@@ -217,10 +217,10 @@ def send(chat_id: int, text: str, reply_to: int | None = None, code: bool = Fals
         resp = requests.post(f"{API}/sendMessage", json=payload, timeout=10)
         resp.raise_for_status()
     except Exception as e:
-        print(f"⚠️ 发送消息失败: {e}")
+        print(f"⚠️ Failed to send message: {e}")
 
 
-# ── 消息路由 ─────────────────────────────────────────────────────────────────
+# ── Message routing ──────────────────────────────────────────────────────────
 def handle_message(msg: dict) -> None:
     chat_id    = msg["chat"]["id"]
     reply_to   = msg["message_id"]
@@ -230,40 +230,40 @@ def handle_message(msg: dict) -> None:
     if not text:
         return
 
-    # 权限鉴定：未配置环境变量(0) 或 ID 不匹配，一律拒绝 (防止 RCE)
+    # Access control: if env var not configured (0) or ID mismatch, deny all (prevent RCE)
     if ALLOWED_USER == 0 or user_id != ALLOWED_USER:
-        send(chat_id, "⛔ 未授权", reply_to)
+        send(chat_id, "⛔ Unauthorized", reply_to)
         return
 
-    # Bot 命令
+    # Bot commands
     if text.startswith("/"):
         _handle_bot_command(chat_id, reply_to, text)
         return
 
     print(f"[{msg['chat'].get('username', chat_id)}] $ {text}")
 
-    # 拦截交互式命令
+    # Intercept interactive commands
     hint = check_interactive(text)
     if hint:
-        send(chat_id, f"⚠️ 交互式命令被拦截\n\n{hint}", reply_to)
+        send(chat_id, f"⚠️ Interactive command blocked\n\n{hint}", reply_to)
         return
 
-    # 自动修正 top -b（无 -n）→ top -bn1
+    # Auto-correct top -b (without -n) → top -bn1
     parts = text.split()
     if os.path.basename(parts[0]) == "top" and "-b" in parts and "-n" not in text:
         idx = parts.index("-b")
         parts[idx] = "-bn1"
         text = " ".join(parts)
-        send(chat_id, f"💡 自动修正: {text}", reply_to)
+        send(chat_id, f"💡 Auto-corrected: {text}", reply_to)
 
-    # 智能处理 cd
+    # Smart cd handling
     if parts[0] == "cd":
         handled, msg_text = handle_cd(text)
         if handled:
             send(chat_id, msg_text, reply_to)
             return
 
-    # 执行命令
+    # Execute command
     output  = execute(text)
     prefix  = f"[{_read_cwd()}] $ {text}\n"
     send(chat_id, prefix + output, reply_to, code=True)
@@ -271,41 +271,41 @@ def handle_message(msg: dict) -> None:
 
 def _handle_bot_command(chat_id: int, reply_to: int, text: str) -> None:
     if text == "/cwd":
-        send(chat_id, f"📂 当前目录: {_read_cwd()}", reply_to)
+        send(chat_id, f"📂 Current directory: {_read_cwd()}", reply_to)
     elif text.startswith("/help"):
         send(
             chat_id,
-            "发送命令即可执行，cd 会持久切换目录\n"
-            "/cwd  — 查看当前目录\n"
-            "/help — 帮助\n\n"
-            "💡 左下角菜单已配置 OpenClaw 快捷操作",
+            "Send commands to execute, cd changes directory persistently\n"
+            "/cwd  — View current directory\n"
+            "/help — Help\n\n"
+            "💡 OpenClaw shortcuts are available in the bottom-left menu",
             reply_to,
         )
-    # OpenClaw 快捷操作拦截
+    # OpenClaw shortcut commands
     elif text == "/openclaw_start":
-        send(chat_id, "⏳ 正在启动 OpenClaw Gateway...", reply_to)
+        send(chat_id, "⏳ Starting OpenClaw Gateway...", reply_to)
         output = execute("env XDG_RUNTIME_DIR=/run/user/0 openclaw gateway start")
         send(chat_id, f"[Gateway Start]\n{output}", reply_to, code=True)
     elif text == "/openclaw_stop":
-        send(chat_id, "⏳ 正在停止 OpenClaw Gateway...", reply_to)
+        send(chat_id, "⏳ Stopping OpenClaw Gateway...", reply_to)
         output = execute("env XDG_RUNTIME_DIR=/run/user/0 openclaw gateway stop")
         send(chat_id, f"[Gateway Stop]\n{output}", reply_to, code=True)
     elif text == "/openclaw_restart":
-        send(chat_id, "⏳ 正在重启 OpenClaw Gateway...", reply_to)
+        send(chat_id, "⏳ Restarting OpenClaw Gateway...", reply_to)
         output = execute("env XDG_RUNTIME_DIR=/run/user/0 openclaw gateway restart")
         send(chat_id, f"[Gateway Restart]\n{output}", reply_to, code=True)
     else:
-        send(chat_id, "未知命令，发送 /help 查看帮助", reply_to)
+        send(chat_id, "Unknown command, send /help for usage", reply_to)
 
 
-# ── 主循环 ───────────────────────────────────────────────────────────────────
+# ── Main loop ────────────────────────────────────────────────────────────────
 def main() -> None:
     _init_cwd()
-    _set_telegram_menu()  # 启动时自动注册左下角快捷菜单
-    print("🐰 Telegram Shell Bot 启动中...")
-    print(f"📂 工作目录: {_read_cwd()}")
+    _set_telegram_menu()  # Register shortcut menu on startup
+    print("🐰 Telegram Shell Bot starting...")
+    print(f"📂 Working directory: {_read_cwd()}")
     if ALLOWED_USER == 0:
-        print("⚠️ 警告: 未配置 ALLOWED_USER，所有人将被拒绝访问！")
+        print("⚠️ Warning: ALLOWED_USER not configured, all access will be denied!")
 
     offset = 0
     while True:
