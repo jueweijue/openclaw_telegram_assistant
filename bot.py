@@ -46,6 +46,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "lang_current":         "🌐 当前语言: {lang}",
         "lang_set":             "🌐 语言已切换为: {lang}",
         "lang_invalid":         "⚠️ 不支持的语言，请使用 /lang zh 或 /lang en",
+        "lang_usage":           "📝 切换语言: /lang zh（中文）  |  /lang en（English）",
         "lang_zh":              "中文",
         "lang_en":              "English",
         "openclaw_start":       "⏳ 正在启动 OpenClaw Gateway...",
@@ -102,6 +103,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "lang_current":         "🌐 Current language: {lang}",
         "lang_set":             "🌐 Language switched to: {lang}",
         "lang_invalid":         "⚠️ Unsupported language, use /lang zh or /lang en",
+        "lang_usage":           "📝 Switch language: /lang zh（中文）  |  /lang en（English）",
         "lang_zh":              "中文",
         "lang_en":              "English",
         "openclaw_start":       "⏳ Starting OpenClaw Gateway...",
@@ -458,8 +460,10 @@ def _handle_bot_command(chat_id: int, reply_to: int, text: str, user_id: int | N
     elif text.startswith("/lang"):
         parts = text.split()
         if len(parts) < 2:
-            # No argument: show current language
-            send(chat_id, t("lang_current", lang).format(lang=t(f"lang_{lang}", lang)), reply_to)
+            # No argument: show current language + usage
+            msg = t("lang_current", lang).format(lang=t(f"lang_{lang}", lang))
+            msg += "\n\n" + t("lang_usage", lang)
+            send(chat_id, msg, reply_to)
             return
         new_lang = parts[1].lower().strip()
         if new_lang not in SUPPORTED_LANGS:
