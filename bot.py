@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Telegram Shell Bot — receives message → executes command → returns result, with persistent cd"""
 
+import json
 import os
 import shlex
 import signal
@@ -15,23 +16,184 @@ ALLOWED_USER = int(os.environ.get("ALLOWED_USER", "0"))
 TIMEOUT      = int(os.environ.get("CMD_TIMEOUT", "30"))
 API          = f"https://api.telegram.org/bot{TOKEN}"
 CWD_FILE     = "/tmp/tg-shell-bot.cwd"
+LANG_FILE    = "/tmp/tg-shell-bot.lang"
 # Default directory: current user's home
 DEFAULT_CWD  = os.path.expanduser("~")
 
-# ── Interactive command hint table ────────────────────────────────────────────
-INTERACTIVE_HINTS: dict[str, str] = {
-    "htop":   "htop → top -bn1 | head -20",
-    "less":   "less → cat <file>",
-    "more":   "more → cat <file>",
-    "vim":    "vim → use cat to read, sed / echo '>' to edit",
-    "vi":     "vi → use cat to read, sed / echo '>' to edit",
-    "nano":   "nano → use cat to read, sed / echo '>' to edit",
-    "watch":  "watch → while true; do <cmd>; sleep 2; done",
-    "tmux":   "tmux is a terminal multiplexer, not available here",
-    "screen": "screen is a terminal multiplexer, not available here",
-    "ssh":    "ssh requires an interactive terminal, not available here",
-    "su":     "su requires an interactive terminal, use sudo <command> instead",
-    "irb":    "irb → ruby -e \"code\"",
+# ── i18n ─────────────────────────────────────────────────────────────────────
+SUPPORTED_LANGS = ("zh", "en")
+
+TRANSLATIONS: dict[str, dict[str, str]] = {
+    "zh": {
+        "unauthorized":         "⛔ 未授权访问",
+        "unknown_command":      "未知命令，发送 /help 查看用法",
+        "interactive_blocked":  "⚠️ 交互式命令已被拦截\n\n{suggestion}",
+        "auto_corrected":       "💡 自动修正: {cmd}",
+        "current_dir":          "📂 当前目录: {dir}",
+        "dir_not_found":        "❌ 目录不存在或无权限: {dir}",
+        "cd_not_supported":     "⚠️ cd - 不支持（无 OLDPWD）",
+        "cmd_timeout":          "❌ 命令超时，已终止（>{timeout}s）",
+        "cmd_error":            "❌ 错误: {error}",
+        "cmd_prefix":           "[{cwd}] $ {cmd}",
+        "exit_code":            "[exit code: {code}]",
+        "help_text":            (
+            "发送命令即可执行，cd 切换目录（持久化）\n"
+            "/cwd  — 查看当前目录\n"
+            "/lang — 切换语言 (zh/en)\n"
+            "/help — 帮助\n\n"
+            "💡 底部菜单有 OpenClaw 快捷按钮"
+        ),
+        "lang_current":         "🌐 当前语言: {lang}",
+        "lang_set":             "🌐 语言已切换为: {lang}",
+        "lang_invalid":         "⚠️ 不支持的语言，请使用 /lang zh 或 /lang en",
+        "lang_zh":              "中文",
+        "lang_en":              "English",
+        "openclaw_start":       "⏳ 正在启动 OpenClaw Gateway...",
+        "openclaw_stop":        "⏳ 正在停止 OpenClaw Gateway...",
+        "openclaw_restart":     "⏳ 正在重启 OpenClaw Gateway...",
+        "openclaw_start_label": "▶️ 启动 OpenClaw",
+        "openclaw_stop_label":  "⏹ 停止 OpenClaw",
+        "openclaw_restart_label":"🔄 重启 OpenClaw",
+        "menu_cwd":             "📂 查看当前目录",
+        "menu_help":            "📖 查看帮助",
+        "menu_lang":            "🌐 切换语言",
+        "bot_starting":         "🐰 Telegram Shell Bot 启动中...",
+        "bot_workdir":          "📂 工作目录: {dir}",
+        "bot_no_user":          "⚠️ 警告: ALLOWED_USER 未配置，所有访问将被拒绝！",
+        "menu_registered":      "✅ Telegram 快捷菜单已注册！",
+        "menu_failed":          "⚠️ Telegram 菜单注册失败: {error}",
+        # Interactive hint templates
+        "hint_tail_f":          "tail -f → tail -n 50 <file>",
+        "hint_htop":            "htop → top -bn1 | head -20",
+        "hint_less":            "less → cat <file>",
+        "hint_more":            "more → cat <file>",
+        "hint_vim":             "vim → 用 cat 读取，sed / echo '>' 编辑",
+        "hint_nano":            "nano → 用 cat 读取，sed / echo '>' 编辑",
+        "hint_watch":           "watch → while true; do <cmd>; sleep 2; done",
+        "hint_tmux":            "tmux 是终端复用器，此处不可用",
+        "hint_screen":          "screen 是终端复用器，此处不可用",
+        "hint_ssh":             "ssh 需要交互式终端，此处不可用",
+        "hint_su":              "su 需要交互式终端，请用 sudo <command> 代替",
+        "hint_irb":             "irb → ruby -e \"code\"",
+        "hint_top":             "top (交互模式) → 建议使用 {flag}",
+        "hint_man":             "man (交互模式) → 建议使用 man {flag} <command>",
+        "hint_repl":            "{cmd} 交互模式不可用，请提供脚本文件或 -e/-c 参数",
+        "no_output":            "(无输出)",
+    },
+    "en": {
+        "unauthorized":         "⛔ Unauthorized",
+        "unknown_command":      "Unknown command, send /help for usage",
+        "interactive_blocked":  "⚠️ Interactive command blocked\n\n{suggestion}",
+        "auto_corrected":       "💡 Auto-corrected: {cmd}",
+        "current_dir":          "📂 Current directory: {dir}",
+        "dir_not_found":        "❌ Directory does not exist or no permission: {dir}",
+        "cd_not_supported":     "⚠️ cd - not supported (no OLDPWD)",
+        "cmd_timeout":          "❌ Command timed out, terminated (>{timeout}s)",
+        "cmd_error":            "❌ Error: {error}",
+        "cmd_prefix":           "[{cwd}] $ {cmd}",
+        "exit_code":            "[exit code: {code}]",
+        "help_text":            (
+            "Send commands to execute, cd changes directory persistently\n"
+            "/cwd  — View current directory\n"
+            "/lang — Switch language (zh/en)\n"
+            "/help — Help\n\n"
+            "💡 OpenClaw shortcuts are available in the bottom-left menu"
+        ),
+        "lang_current":         "🌐 Current language: {lang}",
+        "lang_set":             "🌐 Language switched to: {lang}",
+        "lang_invalid":         "⚠️ Unsupported language, use /lang zh or /lang en",
+        "lang_zh":              "中文",
+        "lang_en":              "English",
+        "openclaw_start":       "⏳ Starting OpenClaw Gateway...",
+        "openclaw_stop":        "⏳ Stopping OpenClaw Gateway...",
+        "openclaw_restart":     "⏳ Restarting OpenClaw Gateway...",
+        "openclaw_start_label": "▶️ Start OpenClaw",
+        "openclaw_stop_label":  "⏹ Stop OpenClaw",
+        "openclaw_restart_label":"🔄 Restart OpenClaw",
+        "menu_cwd":             "📂 View current directory",
+        "menu_help":            "📖 View help",
+        "menu_lang":            "🌐 Switch language",
+        "bot_starting":         "🐰 Telegram Shell Bot starting...",
+        "bot_workdir":          "📂 Working directory: {dir}",
+        "bot_no_user":          "⚠️ Warning: ALLOWED_USER not configured, all access will be denied!",
+        "menu_registered":      "✅ Telegram shortcut menu registered!",
+        "menu_failed":          "⚠️ Telegram menu registration failed: {error}",
+        # Interactive hint templates
+        "hint_tail_f":          "tail -f → tail -n 50 <file>",
+        "hint_htop":            "htop → top -bn1 | head -20",
+        "hint_less":            "less → cat <file>",
+        "hint_more":            "more → cat <file>",
+        "hint_vim":             "vim → use cat to read, sed / echo '>' to edit",
+        "hint_nano":            "nano → use cat to read, sed / echo '>' to edit",
+        "hint_watch":           "watch → while true; do <cmd>; sleep 2; done",
+        "hint_tmux":            "tmux is a terminal multiplexer, not available here",
+        "hint_screen":          "screen is a terminal multiplexer, not available here",
+        "hint_ssh":             "ssh requires an interactive terminal, not available here",
+        "hint_su":              "su requires an interactive terminal, use sudo <command> instead",
+        "hint_irb":             "irb → ruby -e \"code\"",
+        "hint_top":             "top (interactive mode) → consider using {flag}",
+        "hint_man":             "man (interactive mode) → consider using man {flag} <command>",
+        "hint_repl":            "{cmd} interactive mode not available, please provide a script file or -e/-c flag",
+        "no_output":            "(no output)",
+    },
+}
+
+# Default language
+DEFAULT_LANG = "zh"
+
+
+def _load_langs() -> dict[int, str]:
+    """Load per-user language preferences from file."""
+    try:
+        with open(LANG_FILE) as f:
+            data = json.load(f)
+            # Convert string keys back to int
+            return {int(k): v for k, v in data.items()}
+    except (OSError, json.JSONDecodeError, ValueError):
+        return {}
+
+
+def _save_langs(langs: dict[int, str]) -> None:
+    """Save per-user language preferences to file."""
+    with open(LANG_FILE, "w") as f:
+        json.dump(langs, f)
+
+
+# In-memory language cache
+_user_langs: dict[int, str] = _load_langs()
+
+
+def t(key: str, lang: str) -> str:
+    """Translate a key to the given language."""
+    return TRANSLATIONS.get(lang, TRANSLATIONS[DEFAULT_LANG]).get(key, key)
+
+
+def get_user_lang(user_id: int | None) -> str:
+    """Get language for a user, falling back to default."""
+    if user_id is None:
+        return DEFAULT_LANG
+    return _user_langs.get(user_id, DEFAULT_LANG)
+
+
+def set_user_lang(user_id: int, lang: str) -> None:
+    """Set language for a user and persist."""
+    _user_langs[user_id] = lang
+    _save_langs(_user_langs)
+
+# ── Interactive command hint table (translation keys) ────────────────────────
+INTERACTIVE_HINT_KEYS: dict[str, str] = {
+    "htop":   "hint_htop",
+    "less":   "hint_less",
+    "more":   "hint_more",
+    "vim":    "hint_vim",
+    "vi":     "hint_vim",
+    "nano":   "hint_nano",
+    "watch":  "hint_watch",
+    "tmux":   "hint_tmux",
+    "screen": "hint_screen",
+    "ssh":    "hint_ssh",
+    "su":     "hint_su",
+    "irb":    "hint_irb",
 }
 
 # Commands that need extra flags to run non-interactively
@@ -61,7 +223,7 @@ def _write_cwd(path: str) -> None:
 
 
 # ── Interactive command detection ────────────────────────────────────────────
-def check_interactive(cmd: str) -> str | None:
+def check_interactive(cmd: str, lang: str = DEFAULT_LANG) -> str | None:
     """Returns a friendly hint if the command requires an interactive terminal; otherwise None."""
     parts = cmd.split()
     if not parts:
@@ -71,19 +233,19 @@ def check_interactive(cmd: str) -> str | None:
 
     # tail -f detection
     if cmd_name == "tail" and any(f in parts for f in ("-f", "--follow", "-F")):
-        return "tail -f → tail -n 50 <file>"
+        return t("hint_tail_f", lang)
 
     # Detect pager/editor commands at the end of a pipe
     for segment in cmd.split("|")[1:]:
         pipe_cmd = segment.strip().split()
         if pipe_cmd:
             pipe_name = os.path.basename(pipe_cmd[0])
-            if pipe_name in INTERACTIVE_HINTS:
-                return INTERACTIVE_HINTS[pipe_name]
+            if pipe_name in INTERACTIVE_HINT_KEYS:
+                return t(INTERACTIVE_HINT_KEYS[pipe_name], lang)
 
     # Always-interactive commands
-    if cmd_name in INTERACTIVE_HINTS:
-        return INTERACTIVE_HINTS[cmd_name]
+    if cmd_name in INTERACTIVE_HINT_KEYS:
+        return t(INTERACTIVE_HINT_KEYS[cmd_name], lang)
 
     # Commands requiring batch flag
     if cmd_name in BATCH_FLAGS:
@@ -93,13 +255,13 @@ def check_interactive(cmd: str) -> str | None:
         if cmd_name == "top":
             has_batch = any(p.startswith("-") and "b" in p for p in parts[1:])
             if not has_batch:
-                return f"top (interactive mode) → consider using top {required_flag}"
+                return t("hint_top", lang).format(flag=required_flag)
 
         # For man, intercept if no - flags provided
         elif cmd_name == "man":
             has_flag = any(p.startswith("-") for p in parts[1:])
             if not has_flag:
-                return f"man (interactive mode) → consider using man {required_flag} <command>"
+                return t("hint_man", lang).format(flag=required_flag)
 
     # REPL command detection: must have execution flag or script file argument
     if cmd_name in REPL_CMDS:
@@ -107,7 +269,7 @@ def check_interactive(cmd: str) -> str | None:
         has_safe_flag = any(f in parts for f in safe_flags)
         has_script_file = any(not p.startswith("-") for p in parts[1:])
         if not (has_safe_flag or has_script_file):
-            return f"{cmd_name} interactive mode not available, please provide a script file or -e/-c flag"
+            return t("hint_repl", lang).format(cmd=cmd_name)
 
     return None
 
@@ -153,7 +315,7 @@ def execute(cmd: str) -> str:
 
 
 # ── cd handling ──────────────────────────────────────────────────────────────
-def handle_cd(text: str) -> tuple[bool, str]:
+def handle_cd(text: str, lang: str = DEFAULT_LANG) -> tuple[bool, str]:
     """
     Handle pure cd commands. If compound logic (&&, etc.) is present, pass to execute.
     Returns (handled, message)
@@ -165,7 +327,7 @@ def handle_cd(text: str) -> tuple[bool, str]:
     target = parts[1] if len(parts) > 1 else "~"
 
     if target == "-":
-        return True, "⚠️ cd - not supported (no OLDPWD)"
+        return True, t("cd_not_supported", lang)
 
     target = os.path.expanduser(target)
     if not os.path.isabs(target):
@@ -174,27 +336,29 @@ def handle_cd(text: str) -> tuple[bool, str]:
 
     if os.path.isdir(target):
         _write_cwd(target)
-        return True, f"📂 {target}"
+        return True, t("current_dir", lang).format(dir=target)
 
-    return True, f"❌ Directory does not exist or no permission: {parts[1] if len(parts) > 1 else '~'}"
+    return True, t("dir_not_found", lang).format(dir=parts[1] if len(parts) > 1 else "~")
 
 
 # ── Telegram message sending and shortcut menu ───────────────────────────────
 def _set_telegram_menu() -> None:
-    """Register shortcut commands in the Telegram input menu"""
+    """Register shortcut commands in the Telegram input menu (default language)"""
+    lang = DEFAULT_LANG
     commands = [
-        {"command": "openclaw_start", "description": "▶️ Start OpenClaw"},
-        {"command": "openclaw_stop", "description": "⏹ Stop OpenClaw"},
-        {"command": "openclaw_restart", "description": "🔄 Restart OpenClaw"},
-        {"command": "cwd", "description": "📂 View current directory"},
-        {"command": "help", "description": "📖 View help"},
+        {"command": "openclaw_start", "description": t("openclaw_start_label", lang)},
+        {"command": "openclaw_stop",  "description": t("openclaw_stop_label", lang)},
+        {"command": "openclaw_restart","description": t("openclaw_restart_label", lang)},
+        {"command": "cwd",            "description": t("menu_cwd", lang)},
+        {"command": "lang",           "description": t("menu_lang", lang)},
+        {"command": "help",           "description": t("menu_help", lang)},
     ]
     try:
         resp = requests.post(f"{API}/setMyCommands", json={"commands": commands}, timeout=10)
         resp.raise_for_status()
-        print("✅ Telegram shortcut menu registered!")
+        print(t("menu_registered", lang))
     except Exception as e:
-        print(f"⚠️ Telegram menu registration failed: {e}")
+        print(t("menu_failed", lang).format(error=e))
 
 
 def send(chat_id: int, text: str, reply_to: int | None = None, code: bool = False) -> None:
@@ -226,26 +390,27 @@ def handle_message(msg: dict) -> None:
     reply_to   = msg["message_id"]
     user_id    = msg.get("from", {}).get("id")
     text       = msg.get("text", "").strip()
+    lang       = get_user_lang(user_id)
 
     if not text:
         return
 
     # Access control: if env var not configured (0) or ID mismatch, deny all (prevent RCE)
     if ALLOWED_USER == 0 or user_id != ALLOWED_USER:
-        send(chat_id, "⛔ Unauthorized", reply_to)
+        send(chat_id, t("unauthorized", lang), reply_to)
         return
 
     # Bot commands
     if text.startswith("/"):
-        _handle_bot_command(chat_id, reply_to, text)
+        _handle_bot_command(chat_id, reply_to, text, user_id, lang)
         return
 
     print(f"[{msg['chat'].get('username', chat_id)}] $ {text}")
 
     # Intercept interactive commands
-    hint = check_interactive(text)
+    hint = check_interactive(text, lang)
     if hint:
-        send(chat_id, f"⚠️ Interactive command blocked\n\n{hint}", reply_to)
+        send(chat_id, t("interactive_blocked", lang).format(suggestion=hint), reply_to)
         return
 
     # Auto-correct top -b (without -n) → top -bn1
@@ -254,58 +419,64 @@ def handle_message(msg: dict) -> None:
         idx = parts.index("-b")
         parts[idx] = "-bn1"
         text = " ".join(parts)
-        send(chat_id, f"💡 Auto-corrected: {text}", reply_to)
+        send(chat_id, t("auto_corrected", lang).format(cmd=text), reply_to)
 
     # Smart cd handling
     if parts[0] == "cd":
-        handled, msg_text = handle_cd(text)
+        handled, msg_text = handle_cd(text, lang)
         if handled:
             send(chat_id, msg_text, reply_to)
             return
 
     # Execute command
     output  = execute(text)
-    prefix  = f"[{_read_cwd()}] $ {text}\n"
+    prefix  = t("cmd_prefix", lang).format(cwd=_read_cwd(), cmd=text) + "\n"
     send(chat_id, prefix + output, reply_to, code=True)
 
 
-def _handle_bot_command(chat_id: int, reply_to: int, text: str) -> None:
+def _handle_bot_command(chat_id: int, reply_to: int, text: str, user_id: int | None, lang: str) -> None:
     if text == "/cwd":
-        send(chat_id, f"📂 Current directory: {_read_cwd()}", reply_to)
+        send(chat_id, t("current_dir", lang).format(dir=_read_cwd()), reply_to)
     elif text.startswith("/help"):
-        send(
-            chat_id,
-            "Send commands to execute, cd changes directory persistently\n"
-            "/cwd  — View current directory\n"
-            "/help — Help\n\n"
-            "💡 OpenClaw shortcuts are available in the bottom-left menu",
-            reply_to,
-        )
+        send(chat_id, t("help_text", lang), reply_to)
+    elif text.startswith("/lang"):
+        parts = text.split()
+        if len(parts) < 2:
+            # No argument: show current language
+            send(chat_id, t("lang_current", lang).format(lang=t(f"lang_{lang}", lang)), reply_to)
+            return
+        new_lang = parts[1].lower().strip()
+        if new_lang not in SUPPORTED_LANGS:
+            send(chat_id, t("lang_invalid", lang), reply_to)
+            return
+        if user_id is not None:
+            set_user_lang(user_id, new_lang)
+        send(chat_id, t("lang_set", new_lang).format(lang=t(f"lang_{new_lang}", new_lang)), reply_to)
     # OpenClaw shortcut commands
     elif text == "/openclaw_start":
-        send(chat_id, "⏳ Starting OpenClaw Gateway...", reply_to)
+        send(chat_id, t("openclaw_start", lang), reply_to)
         output = execute("env XDG_RUNTIME_DIR=/run/user/0 openclaw gateway start")
         send(chat_id, f"[Gateway Start]\n{output}", reply_to, code=True)
     elif text == "/openclaw_stop":
-        send(chat_id, "⏳ Stopping OpenClaw Gateway...", reply_to)
+        send(chat_id, t("openclaw_stop", lang), reply_to)
         output = execute("env XDG_RUNTIME_DIR=/run/user/0 openclaw gateway stop")
         send(chat_id, f"[Gateway Stop]\n{output}", reply_to, code=True)
     elif text == "/openclaw_restart":
-        send(chat_id, "⏳ Restarting OpenClaw Gateway...", reply_to)
+        send(chat_id, t("openclaw_restart", lang), reply_to)
         output = execute("env XDG_RUNTIME_DIR=/run/user/0 openclaw gateway restart")
         send(chat_id, f"[Gateway Restart]\n{output}", reply_to, code=True)
     else:
-        send(chat_id, "Unknown command, send /help for usage", reply_to)
+        send(chat_id, t("unknown_command", lang), reply_to)
 
 
 # ── Main loop ────────────────────────────────────────────────────────────────
 def main() -> None:
     _init_cwd()
     _set_telegram_menu()  # Register shortcut menu on startup
-    print("🐰 Telegram Shell Bot starting...")
-    print(f"📂 Working directory: {_read_cwd()}")
+    print(t("bot_starting", DEFAULT_LANG))
+    print(t("bot_workdir", DEFAULT_LANG).format(dir=_read_cwd()))
     if ALLOWED_USER == 0:
-        print("⚠️ Warning: ALLOWED_USER not configured, all access will be denied!")
+        print(t("bot_no_user", DEFAULT_LANG))
 
     offset = 0
     while True:
