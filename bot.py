@@ -139,7 +139,7 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
 }
 
 # Default language
-DEFAULT_LANG = "zh"
+DEFAULT_LANG = "en"
 
 
 def _load_langs() -> dict[int, str]:
@@ -403,6 +403,10 @@ def handle_message(msg: dict) -> None:
     # Bot commands
     if text.startswith("/"):
         _handle_bot_command(chat_id, reply_to, text, user_id, lang)
+        # Show language hint for first-time users
+        hint = _lang_hint(user_id)
+        if hint:
+            send(chat_id, hint)
         return
 
     print(f"[{msg['chat'].get('username', chat_id)}] $ {text}")
@@ -432,6 +436,18 @@ def handle_message(msg: dict) -> None:
     output  = execute(text)
     prefix  = t("cmd_prefix", lang).format(cwd=_read_cwd(), cmd=text) + "\n"
     send(chat_id, prefix + output, reply_to, code=True)
+
+    # Show language hint for first-time users (after their command response)
+    hint = _lang_hint(user_id)
+    if hint:
+        send(chat_id, hint)
+
+
+def _lang_hint(user_id: int | None) -> str | None:
+    """Return a language hint for users who haven't set a preference yet. One-time only."""
+    if user_id is None or user_id in _user_langs:
+        return None
+    return "💡 Language: /lang zh for 中文  |  /lang en for English"
 
 
 def _handle_bot_command(chat_id: int, reply_to: int, text: str, user_id: int | None, lang: str) -> None:
