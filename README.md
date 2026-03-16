@@ -25,6 +25,12 @@ A lightweight, secure Telegram Bot that lets you execute server shell commands d
 - **Interactive command alternatives** — `vim` → use `cat` to read / `sed` to edit, `less` → `cat`, etc.
 - **OpenClaw shortcut menu** — built-in `/openclaw_start`, `/openclaw_stop`, `/openclaw_restart` commands in the Telegram input menu
 
+### 🌐 Multi-language Support (i18n)
+- **Bilingual** — full Chinese and English support for all user-facing messages
+- **Per-user preference** — each user can choose their own language, persisted across restarts
+- **Easy switching** — send `/lang zh` or `/lang en` to switch instantly
+- **Auto-guidance** — first-time users receive a hint about language options
+
 ### 🔧 OpenClaw Integration
 - Built-in `/openclaw_start`, `/openclaw_stop`, `/openclaw_restart` commands
 - One-click OpenClaw Gateway management, no SSH needed
@@ -104,6 +110,9 @@ sudo journalctl -u openclaw-telegram-assistant -f
 | `pwd` | Returns `/var/log` |
 | `top -bn1 \| head -10` | Show top 10 CPU-consuming processes |
 | `/cwd` | View current working directory |
+| `/lang` | View current language |
+| `/lang zh` | Switch to Chinese |
+| `/lang en` | Switch to English |
 | `/help` | View help |
 | `/openclaw_restart` | Restart OpenClaw Gateway |
 

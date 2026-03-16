@@ -25,6 +25,12 @@
 - **交互命令替代提示** — `vim` → 用 `cat` 读取 / `sed` 编辑，`less` → `cat` 等
 - **OpenClaw 快捷菜单** — Telegram 输入框左侧内置 `/openclaw_start`、`/openclaw_stop`、`/openclaw_restart` 快捷按钮
 
+### 🌐 多语言支持 (i18n)
+- **中英双语** — 所有用户可见的提示信息均支持中文和英文
+- **独立语言偏好** — 每个用户可单独选择语言，重启后自动保持
+- **快捷切换** — 发送 `/lang zh` 或 `/lang en` 即可即时切换
+- **新用户引导** — 首次使用时自动提示语言切换方法
+
 ### 🔧 OpenClaw 集成
 - 内置 `/openclaw_start`、`/openclaw_stop`、`/openclaw_restart` 命令
 - 一键管理 OpenClaw Gateway，无需 SSH 登录
@@ -104,6 +110,9 @@ sudo journalctl -u openclaw-telegram-assistant -f
 | `pwd` | 返回 `/var/log` |
 | `top -bn1 \| head -10` | 查看 CPU 占用前 10 的进程 |
 | `/cwd` | 查看当前工作目录 |
+| `/lang` | 查看当前语言 |
+| `/lang zh` | 切换中文 |
+| `/lang en` | 切换英文 |
 | `/help` | 查看帮助 |
 | `/openclaw_restart` | 重启 OpenClaw Gateway |
 
