@@ -45,7 +45,7 @@
 
 ```bash
 # 1. 克隆仓库
-git clone https://github.com/zaineye/openclaw_telegram_assistant.git
+git clone https://github.com/jueweijue/openclaw_telegram_assistant.git
 cd openclaw_telegram_assistant
 
 # 2. 安装依赖
