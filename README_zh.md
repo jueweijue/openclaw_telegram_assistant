@@ -4,36 +4,42 @@
 
 ---
 
-一个轻量、安全的 Telegram Bot，让你在 Telegram 里直接执行服务器 Shell 命令，并内置 OpenClaw Gateway 管理快捷操作。
+一个轻量、安全的 Telegram Bot，让你在 Telegram 里直接执行服务器 Shell 命令，内置 OpenClaw Gateway 管理快捷操作，并支持**多主机控制**。
 
 ## ✨ 功能特性
 
 ### 🖥️ Shell 命令执行
 - 在 Telegram 中发送消息即执行 Shell 命令，结果以代码块格式返回
-- **cd 持久化** — 切换目录后多次命令共享同一工作目录，不用反复 `cd`
-- **超时保护** — 命令超时自动终止（默认 30s，可配置），防止进程卡死
+- **cd 持久化** — 切换目录后多次命令共享同一工作目录（每台主机独立）
+- **超时保护** — 命令超时自动终止（默认 30s，可配置）
 - **进程组清理** — 超时后 SIGTERM → SIGKILL 逐步清理，不残留僵尸进程
+
+### 🖥️ 多主机控制
+- **主机注册** — 通过 `/addhost` 交互式添加远程服务器（SSH 连接），自动测试连通性
+- **点击切换** — `/hosts` 以按钮形式展示所有主机，点击即可切换活跃主机
+- **独立工作目录** — 每台主机维护独立的持久化 cwd
+- **连接池** — SSH 连接自动重用，断线自动重连
+- **密钥/密码认证** — 支持 SSH 密钥文件和密码两种认证方式
+- **添加时测试** — 新主机在保存前会先测试 SSH 连接
 
 ### 🛡️ 安全机制
 - **用户白名单** — 仅允许指定 user_id 操作，未配置时拒绝所有访问
 - **交互式命令拦截** — 自动识别并拦截需要终端交互的命令（`vim`、`htop`、`ssh`、`tail -f` 等），并给出替代建议
-- **REPL 命令增强检测** — `python3`、`node` 等必须带 `-c`/脚本文件参数才能执行，防止进入交互模式
+- **REPL 命令增强检测** — `python3`、`node` 等必须带 `-c`/脚本文件参数才能执行
 - **路径注入防护** — 使用 `shlex.quote` 处理工作目录路径
 
 ### ⚡ 智能辅助
 - **命令自动修正** — `top -b` → `top -bn1`，自动补全 batch 模式参数
 - **交互命令替代提示** — `vim` → 用 `cat` 读取 / `sed` 编辑，`less` → `cat` 等
-- **OpenClaw 快捷菜单** — Telegram 输入框左侧内置 `/openclaw_start`、`/openclaw_stop`、`/openclaw_restart` 快捷按钮
 
 ### 🌐 多语言支持 (i18n)
 - **中英双语** — 所有用户可见的提示信息均支持中文和英文
 - **独立语言偏好** — 每个用户可单独选择语言，重启后自动保持
 - **快捷切换** — 发送 `/lang zh` 或 `/lang en` 即可即时切换
-- **新用户引导** — 首次使用时自动提示语言切换方法
 
 ### 🔧 OpenClaw 集成
 - 内置 `/openclaw_start`、`/openclaw_stop`、`/openclaw_restart` 命令
-- 一键管理 OpenClaw Gateway，无需 SSH 登录
+- 命令跟随活跃主机 — 可在任意已连接的机器上管理 OpenClaw
 
 ## 📦 安装
 
@@ -42,7 +48,7 @@
 git clone https://github.com/zaineye/openclaw_telegram_assistant.git
 cd openclaw_telegram_assistant
 
-# 2. 安装依赖（仅需 requests）
+# 2. 安装依赖
 pip3 install -r requirements.txt
 
 # 3. 配置环境变量
@@ -87,21 +93,16 @@ ExecStart=/usr/bin/python3 /path/to/project/openclaw_telegram_assistant/bot.py
 然后执行：
 
 ```bash
-# 复制服务文件
 sudo cp openclaw-telegram-assistant.service /etc/systemd/system/
-
-# 重载 & 启动
 sudo systemctl daemon-reload
 sudo systemctl enable --now openclaw-telegram-assistant
-
-# 查看状态
 sudo systemctl status openclaw-telegram-assistant
-
-# 查看日志
 sudo journalctl -u openclaw-telegram-assistant -f
 ```
 
 ## 📖 使用示例
+
+### 基本命令
 
 | 发送 | 说明 |
 |------|------|
@@ -110,11 +111,26 @@ sudo journalctl -u openclaw-telegram-assistant -f
 | `pwd` | 返回 `/var/log` |
 | `top -bn1 \| head -10` | 查看 CPU 占用前 10 的进程 |
 | `/cwd` | 查看当前工作目录 |
-| `/lang` | 查看当前语言 |
-| `/lang zh` | 切换中文 |
-| `/lang en` | 切换英文 |
+| `/lang` | 查看/切换语言 |
 | `/help` | 查看帮助 |
-| `/openclaw_restart` | 重启 OpenClaw Gateway |
+
+### 多主机命令
+
+| 发送 | 说明 |
+|------|------|
+| `/hosts` | 查看所有主机（点击按钮切换） |
+| `/addhost` | 交互式添加新主机（自动测试连接） |
+| `/delhost <name>` | 删除主机 |
+| `/disconnect` | 断开所有 SSH 连接 |
+| `/cancel` | 退出交互式流程 |
+
+### OpenClaw 命令
+
+| 发送 | 说明 |
+|------|------|
+| `/openclaw_start` | 启动 OpenClaw Gateway（在当前活跃主机上） |
+| `/openclaw_stop` | 停止 OpenClaw Gateway（在当前活跃主机上） |
+| `/openclaw_restart` | 重启 OpenClaw Gateway（在当前活跃主机上） |
 
 ### 被拦截的命令示例
 
@@ -128,7 +144,10 @@ sudo journalctl -u openclaw-telegram-assistant -f
 ## 📂 项目结构
 
 ```
-├── bot.py                              # 核心逻辑
+├── bot.py                              # 主入口 + 消息路由 + 命令处理
+├── executor.py                         # 本地/远程执行器 + SSH 连接池
+├── hosts.py                            # 主机注册表管理
+├── hosts.json                          # 主机配置（自动生成，不提交）
 ├── run.sh                              # 启动脚本
 ├── openclaw-telegram-assistant.service  # systemd 服务文件
 ├── requirements.txt                    # Python 依赖
@@ -141,6 +160,7 @@ sudo journalctl -u openclaw-telegram-assistant -f
 ## ⚠️ 安全提醒
 
 - `.env` 文件包含 Bot Token，**绝对不要提交到版本库**
+- `hosts.json` 可能包含密码，**绝对不要提交到版本库**
 - 建议在服务器防火墙限制 SSH 访问，Bot 本身不暴露端口
 - `ALLOWED_USER` 务必设置为你的 User ID，不要留 0 用于生产环境
 

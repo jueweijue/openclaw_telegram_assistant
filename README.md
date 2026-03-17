@@ -4,45 +4,51 @@
 
 ---
 
-A lightweight, secure Telegram Bot that lets you execute server shell commands directly in Telegram, with built-in OpenClaw Gateway management shortcuts.
+A lightweight, secure Telegram Bot that lets you execute server shell commands directly in Telegram, with built-in OpenClaw Gateway management shortcuts and **multi-host control**.
 
 ## ✨ Features
 
 ### 🖥️ Shell Command Execution
 - Execute shell commands by sending messages in Telegram, results returned in code block format
-- **Persistent `cd`** — directory changes persist across commands, no need to repeat `cd`
-- **Timeout protection** — commands automatically terminated after timeout (default 30s, configurable), preventing hung processes
-- **Process group cleanup** — graceful SIGTERM → SIGKILL escalation after timeout, no zombie processes
+- **Persistent `cd`** — directory changes persist across commands per host
+- **Timeout protection** — commands automatically terminated after timeout (default 30s, configurable)
+- **Process group cleanup** — graceful SIGTERM → SIGKILL escalation, no zombie processes
+
+### 🖥️ Multi-Host Control
+- **Host registry** — add remote servers via interactive wizard (`/addhost`)
+- **Tap to switch** — `/hosts` shows all hosts as buttons, tap to switch active host
+- **Independent working directories** — each host maintains its own persistent cwd
+- **SSH connection pooling** — connections auto-reused and auto-reconnected on failure
+- **Key & password auth** — supports both SSH key file and password authentication
+- **Connection test on add** — new hosts are tested before being saved
 
 ### 🛡️ Security
 - **User whitelist** — only specified `user_id` can operate; all access denied when unconfigured
-- **Interactive command interception** — automatically detects and blocks commands requiring a terminal (`vim`, `htop`, `ssh`, `tail -f`, etc.) with alternative suggestions
-- **REPL command detection** — `python3`, `node`, etc. must include `-c` or a script file argument to prevent entering interactive mode
-- **Path injection protection** — uses `shlex.quote` to sanitize working directory paths
+- **Interactive command interception** — auto-detects and blocks commands requiring a terminal (`vim`, `htop`, `ssh`, `tail -f`, etc.) with alternative suggestions
+- **REPL command detection** — `python3`, `node`, etc. must include `-c` or a script file
+- **Path injection protection** — uses `shlex.quote` to sanitize paths
 
 ### ⚡ Smart Assistance
-- **Auto-correction** — `top -b` → `top -bn1`, automatically补全 batch mode flags
-- **Interactive command alternatives** — `vim` → use `cat` to read / `sed` to edit, `less` → `cat`, etc.
-- **OpenClaw shortcut menu** — built-in `/openclaw_start`, `/openclaw_stop`, `/openclaw_restart` commands in the Telegram input menu
+- **Auto-correction** — `top -b` → `top -bn1`
+- **Interactive command alternatives** — `vim` → `cat`/`sed`, `less` → `cat`, etc.
 
-### 🌐 Multi-language Support (i18n)
-- **Bilingual** — full Chinese and English support for all user-facing messages
-- **Per-user preference** — each user can choose their own language, persisted across restarts
-- **Easy switching** — send `/lang zh` or `/lang en` to switch instantly
-- **Auto-guidance** — first-time users receive a hint about language options
+### 🌐 Multi-language (i18n)
+- **Bilingual** — full Chinese and English support
+- **Per-user preference** — each user chooses their own language, persisted across restarts
+- **Easy switching** — `/lang zh` or `/lang en`
 
 ### 🔧 OpenClaw Integration
 - Built-in `/openclaw_start`, `/openclaw_stop`, `/openclaw_restart` commands
-- One-click OpenClaw Gateway management, no SSH needed
+- Commands follow the active host — manage OpenClaw on any connected machine
 
 ## 📦 Installation
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/jueweijue/openclaw_telegram_assistant.git
+git clone https://github.com/zaineye/openclaw_telegram_assistant.git
 cd openclaw_telegram_assistant
 
-# 2. Install dependencies (only requests needed)
+# 2. Install dependencies
 pip3 install -r requirements.txt
 
 # 3. Configure environment variables
@@ -87,21 +93,16 @@ ExecStart=/usr/bin/python3 /path/to/project/openclaw_telegram_assistant/bot.py
 Then:
 
 ```bash
-# Copy the service file
 sudo cp openclaw-telegram-assistant.service /etc/systemd/system/
-
-# Reload & start
 sudo systemctl daemon-reload
 sudo systemctl enable --now openclaw-telegram-assistant
-
-# Check status
 sudo systemctl status openclaw-telegram-assistant
-
-# View logs
 sudo journalctl -u openclaw-telegram-assistant -f
 ```
 
 ## 📖 Usage Examples
+
+### Basic Commands
 
 | Send | Description |
 |------|-------------|
@@ -110,39 +111,58 @@ sudo journalctl -u openclaw-telegram-assistant -f
 | `pwd` | Returns `/var/log` |
 | `top -bn1 \| head -10` | Show top 10 CPU-consuming processes |
 | `/cwd` | View current working directory |
-| `/lang` | View current language |
-| `/lang zh` | Switch to Chinese |
-| `/lang en` | Switch to English |
+| `/lang` | View / switch language |
 | `/help` | View help |
-| `/openclaw_restart` | Restart OpenClaw Gateway |
 
-### Intercepted Command Examples
+### Multi-Host Commands
+
+| Send | Description |
+|------|-------------|
+| `/hosts` | List all hosts (tap a button to switch) |
+| `/addhost` | Add a new host (interactive wizard, tests connection) |
+| `/delhost <name>` | Remove a host |
+| `/disconnect` | Disconnect all SSH sessions |
+| `/cancel` | Exit interactive wizard |
+
+### OpenClaw Commands
+
+| Send | Description |
+|------|-------------|
+| `/openclaw_start` | Start OpenClaw Gateway (on active host) |
+| `/openclaw_stop` | Stop OpenClaw Gateway (on active host) |
+| `/openclaw_restart` | Restart OpenClaw Gateway (on active host) |
+
+### Intercepted Commands
 
 | Send | Result |
 |------|--------|
-| `vim test.txt` | ⚠️ Intercepted, suggests `cat` / `sed` |
-| `htop` | ⚠️ Intercepted, suggests `top -bn1 \| head -20` |
-| `tail -f /var/log/syslog` | ⚠️ Intercepted, suggests `tail -n 50` |
-| `python3` | ⚠️ Intercepted, suggests passing `-c` or a script file |
+| `vim test.txt` | ⚠️ Suggests `cat` / `sed` |
+| `htop` | ⚠️ Suggests `top -bn1 \| head -20` |
+| `tail -f /var/log/syslog` | ⚠️ Suggests `tail -n 50` |
+| `python3` | ⚠️ Suggests `-c` or a script file |
 
 ## 📂 Project Structure
 
 ```
-├── bot.py                              # Core logic
+├── bot.py                              # Main entry, message routing, command handling
+├── executor.py                         # Local/remote executor, SSH connection pool
+├── hosts.py                            # Host registry management
+├── hosts.json                          # Host config (auto-generated, gitignored)
 ├── run.sh                              # Startup script
 ├── openclaw-telegram-assistant.service  # systemd service file
 ├── requirements.txt                    # Python dependencies
 ├── .env.example                        # Environment variable template
 ├── .gitignore                          # Git ignore rules
-├── README.md                           # This file (English)
+├── README.md                           # This file
 └── README_zh.md                        # Chinese README
 ```
 
 ## ⚠️ Security Notes
 
-- The `.env` file contains your Bot Token — **never commit it to version control**
-- It is recommended to restrict SSH access via server firewall; the Bot itself does not expose any ports
-- Always set `ALLOWED_USER` to your own User ID; do not leave it as 0 in production
+- The `.env` file contains your Bot Token — **never commit it**
+- `hosts.json` may contain passwords — **never commit it**
+- Restrict SSH access via firewall; the Bot itself does not expose any ports
+- Always set `ALLOWED_USER` to your User ID in production
 
 ## 📄 License
 
