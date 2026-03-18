@@ -60,7 +60,7 @@ def set_default_host(hosts: dict, name: str) -> bool:
 
 def add_host(hosts: dict, name: str, host: str, port: int = 22,
              user: str = "root", key_file: str | None = None,
-             password: str | None = None) -> bool:
+             password: str | None = None, config_path: str | None = None) -> bool:
     """Add a remote host. Returns True on success, False if name exists."""
     if name in hosts:
         return False
@@ -75,6 +75,7 @@ def add_host(hosts: dict, name: str, host: str, port: int = 22,
         entry["key_file"] = key_file
     if password:
         entry["password"] = password
+    entry["config_path"] = config_path or "~/.openclaw/openclaw.json"
     hosts[name] = entry
     save_hosts(hosts)
     return True

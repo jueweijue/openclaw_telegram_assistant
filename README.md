@@ -4,14 +4,14 @@
 
 ---
 
-A lightweight, secure Telegram Bot that lets you execute server shell commands directly in Telegram, with built-in OpenClaw Gateway management shortcuts and **multi-host control**.
+A lightweight, secure Telegram Bot that lets you execute server shell commands directly in Telegram, with built-in OpenClaw Gateway management, multi-host control, and API management.
 
 ## ✨ Features
 
 ### 🖥️ Shell Command Execution
 - Execute shell commands by sending messages in Telegram, results returned in code block format
 - **Persistent `cd`** — directory changes persist across commands per host
-- **Timeout protection** — commands automatically terminated after timeout (default 30s, configurable)
+- **Timeout protection** — commands automatically terminated after timeout (default 30s)
 - **Process group cleanup** — graceful SIGTERM → SIGKILL escalation, no zombie processes
 
 ### 🖥️ Multi-Host Control
@@ -21,6 +21,20 @@ A lightweight, secure Telegram Bot that lets you execute server shell commands d
 - **SSH connection pooling** — connections auto-reused and auto-reconnected on failure
 - **Key & password auth** — supports both SSH key file and password authentication
 - **Connection test on add** — new hosts are tested before being saved
+- **Per-host config path** — each host can have its own OpenClaw config path
+
+### 🤖 API Management
+- **Add API** — interactive wizard to add OpenAI-compatible API providers
+  - Auto-detect protocol (openai-completions / openai-responses)
+  - Fetch models from `/models` endpoint
+  - Select models with paginated buttons (6 per page)
+  - Manual model input for custom models
+  - Existing provider detection — skip URL/key input, merge new models
+- **Delete API** — delete entire provider or individual models
+  - Delete entire provider with default model fallback
+  - Delete individual models with multi-select buttons
+  - Auto-cleanup of defaults.models references
+- **Remote config** — writes config to the active host via SSH
 
 ### 🛡️ Security
 - **User whitelist** — only specified `user_id` can operate; all access denied when unconfigured
@@ -31,6 +45,7 @@ A lightweight, secure Telegram Bot that lets you execute server shell commands d
 ### ⚡ Smart Assistance
 - **Auto-correction** — `top -b` → `top -bn1`
 - **Interactive command alternatives** — `vim` → `cat`/`sed`, `less` → `cat`, etc.
+- **Gateway restart feedback** — shows success/failure after restart
 
 ### 🌐 Multi-language (i18n)
 - **Bilingual** — full Chinese and English support
@@ -44,18 +59,14 @@ A lightweight, secure Telegram Bot that lets you execute server shell commands d
 ## 📦 Installation
 
 ```bash
-# 1. Clone the repository
 git clone https://github.com/jueweijue/openclaw_telegram_assistant.git
 cd openclaw_telegram_assistant
 
-# 2. Install dependencies
 pip3 install -r requirements.txt
 
-# 3. Configure environment variables
 cp .env.example .env
 # Edit .env, fill in your BOT_TOKEN and ALLOWED_USER
 
-# 4. Start
 bash run.sh
 ```
 
@@ -113,6 +124,7 @@ sudo journalctl -u openclaw-telegram-assistant -f
 | `/cwd` | View current working directory |
 | `/lang` | View / switch language |
 | `/help` | View help |
+| `/cancel` | Exit interactive wizard |
 
 ### Multi-Host Commands
 
@@ -122,7 +134,14 @@ sudo journalctl -u openclaw-telegram-assistant -f
 | `/addhost` | Add a new host (interactive wizard, tests connection) |
 | `/delhost <name>` | Remove a host |
 | `/disconnect` | Disconnect all SSH sessions |
-| `/cancel` | Exit interactive wizard |
+
+### API Management
+
+| Send | Description |
+|------|-------------|
+| `/api` | Open API management menu |
+| ➕ 添加API | Add API provider (interactive wizard) |
+| 🗑️ 删除API | Delete provider or individual models |
 
 ### OpenClaw Commands
 
@@ -144,7 +163,7 @@ sudo journalctl -u openclaw-telegram-assistant -f
 ## 📂 Project Structure
 
 ```
-├── bot.py                              # Main entry, message routing, command handling
+├── bot.py                              # Main entry, message routing, all commands
 ├── executor.py                         # Local/remote executor, SSH connection pool
 ├── hosts.py                            # Host registry management
 ├── hosts.json                          # Host config (auto-generated, gitignored)
